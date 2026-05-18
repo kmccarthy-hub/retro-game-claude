@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SERPENTRON 9000</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  :root {
+    --bg:        #0a0a0f;
+    --panel:     #11111a;
+    --border:    #2a2a3f;
+    --green:     #00ff88;
+    --green-dim: #006633;
+    --red:       #ff3366;
+    --yellow:    #ffcc00;
+    --cyan:      #00ccff;
+    --white:     #e8e8f0;
+    --scanline:  rgba(0,0,0,0.18);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'Press Start 2P', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  /* CRT flicker */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      var(--scanline) 0px,
+      var(--scanline) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 100;
+    animation: flicker 8s infinite;
+  }
+
+  @keyframes flicker {
+    0%,100% { opacity:1 }
+    92% { opacity:1 }
+    93% { opacity:.85 }
+    94% { opacity:1 }
+    96% { opacity:.9 }
+    97% { opacity:1 }
+  }
+
+  h1 {
+    font-size: clamp(10px, 2.5vw, 20px);
+    color: var(--green);
+    text-shadow: 0 0 10px var(--green), 0 0 30px var(--green-dim);
+    letter-spacing: 4px;
+    margin-bottom: 12px;
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+
+  @keyframes glow {
+    from { text-shadow: 0 0 6px var(--green), 0 0 20px var(--green-dim); }
+    to   { text-shadow: 0 0 16px var(--green), 0 0 50px var(--green-dim), 0 0 2px #fff; }
+  }
+
+  .hud {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 10px;
+    font-size: 9px;
+    color: var(--cyan);
+  }
+
+  .hud span { color: var(--yellow); }
+
+  .arena-wrap {
+    position: relative;
+    border: 3px solid var(--green-dim);
+    box-shadow: 0 0 0 1px var(--green), 0 0 30px rgba(0,255,136,.15), inset 0 0 40px rgba(0,0,0,.6);
+  }
+
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  /* overlay for start/game-over */
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: rgba(0,0,0,.78);
+    text-align: center;
+    padding: 20px;
+  }
+
+  .overlay.hidden { display: none; }
+
+  .overlay h2 {
+    font-size: clamp(10px, 2.8vw, 22px);
+    color: var(--red);
+    text-shadow: 0 0 12px var(--red);
+    animation: blink 1s step-end infinite;
+  }
+
+  .overlay .sub {
+    font-size: 7px;
+    color: var(--white);
+    line-height: 2;
+  }
+
+  .overlay .final {
+    font-size: 9px;
+    color: var(--yellow);
+    text-shadow: 0 0 8px var(--yellow);
+  }
+
+  @keyframes blink { 50% { opacity: 0 } }
+
+  .btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    padding: 10px 20px;
+    background: transparent;
+    color: var(--green);
+    border: 2px solid var(--green);
+    cursor: pointer;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: background .15s, color .15s, box-shadow .15s;
+    margin-top: 6px;
+  }
+
+  .btn:hover {
+    background: var(--green);
+    color: var(--bg);
+    box-shadow: 0 0 16px var(--green);
+  }
+
+  .footer {
+    margin-top: 10px;
+    font-size: 7px;
+    color: var(--border);
+    letter-spacing: 2px;
+  }
+
+  /* mobile d-pad */
+  .dpad {
+    display: none;
+    margin-top: 16px;
+    gap: 4px;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .dpad-row { display: flex; gap: 4px; }
+
+  .dpad-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    width: 44px; height: 44px;
+    background: var(--panel);
+    border: 2px solid var(--border);
+    color: var(--white);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .1s;
+  }
+
+  .dpad-btn:active { background: var(--green-dim); }
+
+  @media (max-width: 520px) {
+    .dpad { display: flex; }
+  }
+</style>
+</head>
+<body>
+
+<h1>SERPENTRON 9000</h1>
+
+<div class="hud">
+  SCORE: <span id="scoreDisplay">0</span>
+  &nbsp;&nbsp;
+  HIGH: <span id="hiDisplay">0</span>
+  &nbsp;&nbsp;
+  LVL: <span id="lvlDisplay">1</span>
+</div>
+
+<div class="arena-wrap">
+  <canvas id="c"></canvas>
+
+  <div class="overlay" id="overlay">
+    <h2 id="overlayTitle">SERPENTRON</h2>
+    <div class="sub" id="overlaySub">
+      ARROW KEYS / WASD TO MOVE<br>
+      EAT ◆ TO GROW<br>
+      DON'T HIT THE WALLS OR YOURSELF
+    </div>
+    <div class="final" id="overlayScore"></div>
+    <button class="btn" id="startBtn">INSERT COIN</button>
+  </div>
+</div>
+
+<div class="dpad">
+  <div class="dpad-row"><button class="dpad-btn" data-dir="UP">▲</button></div>
+  <div class="dpad-row">
+    <button class="dpad-btn" data-dir="LEFT">◀</button>
+    <button class="dpad-btn" data-dir="DOWN">▼</button>
+    <button class="dpad-btn" data-dir="RIGHT">▶</button>
+  </div>
+</div>
+
+<div class="footer">© 1987 NEON ARCADE SYSTEMS — ALL RIGHTS RESERVED</div>
+
+<script>
+(() => {
+  const COLS = 25, ROWS = 25;
+  const CELL = Math.min(Math.floor(Math.min(window.innerWidth * .9, window.innerHeight * .62) / COLS), 22);
+  const W = COLS * CELL, H = ROWS * CELL;
+
+  const canvas = document.getElementById('c');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const overlay    = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlayTitle');
+  const overlaySub   = document.getElementById('overlaySub');
+  const overlayScore = document.getElementById('overlayScore');
+  const startBtn   = document.getElementById('startBtn');
+  const scoreEl    = document.getElementById('scoreDisplay');
+  const hiEl       = document.getElementById('hiDisplay');
+  const lvlEl      = document.getElementById('lvlDisplay');
+
+  // ── palette
+  const C = {
+    bg:       '#0a0a0f',
+    grid:     '#0e0e18',
+    snakeH:   '#00ff88',
+    snakeB:   '#00cc66',
+    snakeG:   '#009944',
+    food:     '#ff3366',
+    foodGlow: 'rgba(255,51,102,.35)',
+    wall:     '#1a1a2e',
+    wallLine: '#2a2a4f',
+    text:     '#e8e8f0',
+  };
+
+  let snake, dir, nextDir, food, score, hiScore = 0, level, speed, ticking, particles;
+
+  // ── helpers
+  const rng = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+
+  function placeFood() {
+    const occupied = new Set(snake.map(s => `${s.x},${s.y}`));
+    let f;
+    do { f = { x: rng(0, COLS-1), y: rng(0, ROWS-1) }; }
+    while (occupied.has(`${f.x},${f.y}`));
+    return f;
+  }
+
+  function initGame() {
+    const cx = Math.floor(COLS/2), cy = Math.floor(ROWS/2);
+    snake = [{x:cx,y:cy},{x:cx-1,y:cy},{x:cx-2,y:cy}];
+    dir = {x:1,y:0};
+    nextDir = {x:1,y:0};
+    food = placeFood();
+    score = 0;
+    level = 1;
+    speed = 150;
+    particles = [];
+    updateHUD();
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    hiEl.textContent = hiScore;
+    lvlEl.textContent = level;
+  }
+
+  // ── particles
+  function spawnParticles(x, y) {
+    for (let i = 0; i < 14; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const spd   = 1.5 + Math.random() * 3;
+      particles.push({
+        x: x * CELL + CELL/2, y: y * CELL + CELL/2,
+        vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd,
+        life: 1, color: ['#ff3366','#ffcc00','#00ccff'][rng(0,2)],
+        size: rng(2,4)
+      });
+    }
+  }
+
+  function updateParticles() {
+    for (let i = particles.length-1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.12;
+      p.life -= 0.045;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function drawParticles() {
+    particles.forEach(p => {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // ── draw
+  let foodPulse = 0;
+
+  function draw() {
+    foodPulse += 0.08;
+
+    // background + grid
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = C.grid;
+    ctx.lineWidth = 0.5;
+    for (let c = 0; c <= COLS; c++) {
+      ctx.beginPath(); ctx.moveTo(c*CELL,0); ctx.lineTo(c*CELL,H); ctx.stroke();
+    }
+    for (let r = 0; r <= ROWS; r++) {
+      ctx.beginPath(); ctx.moveTo(0,r*CELL); ctx.lineTo(W,r*CELL); ctx.stroke();
+    }
+
+    // food glow + body
+    const fx = food.x * CELL, fy = food.y * CELL;
+    const pulse = 0.7 + 0.3 * Math.sin(foodPulse);
+    const grad = ctx.createRadialGradient(fx+CELL/2, fy+CELL/2, 0, fx+CELL/2, fy+CELL/2, CELL*1.6*pulse);
+    grad.addColorStop(0, 'rgba(255,51,102,.45)');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.fillRect(fx - CELL, fy - CELL, CELL*3, CELL*3);
+
+    // food diamond
+    ctx.fillStyle = C.food;
+    ctx.shadowColor = C.food;
+    ctx.shadowBlur  = 10 * pulse;
+    const fc = CELL/2;
+    ctx.beginPath();
+    ctx.moveTo(fx+fc, fy+2);
+    ctx.lineTo(fx+CELL-2, fy+fc);
+    ctx.lineTo(fx+fc, fy+CELL-2);
+    ctx.lineTo(fx+2, fy+fc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // snake
+    snake.forEach((seg, i) => {
+      const t = i / snake.length;
+      ctx.fillStyle = i === 0 ? C.snakeH : (t < .4 ? C.snakeB : C.snakeG);
+      const pad = i === 0 ? 1 : 2;
+      ctx.fillRect(seg.x*CELL+pad, seg.y*CELL+pad, CELL-pad*2, CELL-pad*2);
+
+      // inner shine on head
+      if (i === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,.18)';
+        ctx.fillRect(seg.x*CELL+3, seg.y*CELL+3, CELL/3, CELL/3);
+      }
+    });
+
+    // eyes on head
+    const h = snake[0];
+    ctx.fillStyle = C.bg;
+    const ex = dir.x, ey = dir.y;
+    const eyeOffsets = ey === 0
+      ? [{dx:CELL*.65,dy:CELL*.28},{dx:CELL*.65,dy:CELL*.68}]
+      : [{dx:CELL*.28,dy:CELL*.65},{dx:CELL*.68,dy:CELL*.65}];
+    // rotate based on direction
+    const e1 = {
+      x: h.x*CELL + (dir.x===1?CELL*.6 : dir.x===-1?CELL*.18 : CELL*.28),
+      y: h.y*CELL + (dir.y===1?CELL*.6 : dir.y===-1?CELL*.18 : CELL*.28),
+    };
+    const e2 = {
+      x: h.x*CELL + (dir.x===1?CELL*.6 : dir.x===-1?CELL*.18 : CELL*.65),
+      y: h.y*CELL + (dir.y===1?CELL*.65 : dir.y===-1?CELL*.18 : CELL*.28),
+    };
+    ctx.fillRect(e1.x, e1.y, 3, 3);
+    ctx.fillRect(e2.x, e2.y, 3, 3);
+
+    drawParticles();
+  }
+
+  // ── step
+  function step() {
+    dir = { ...nextDir };
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    // wall collision
+    if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) {
+      gameOver(); return;
+    }
+    // self collision
+    if (snake.some(s => s.x === head.x && s.y === head.y)) {
+      gameOver(); return;
+    }
+
+    snake.unshift(head);
+
+    if (head.x === food.x && head.y === food.y) {
+      spawnParticles(food.x, food.y);
+      score += 10 * level;
+      if (score > hiScore) hiScore = score;
+      if (score % 50 === 0) {
+        level++;
+        speed = Math.max(60, speed - 10);
+        restartTick();
+      }
+      food = placeFood();
+      updateHUD();
+    } else {
+      snake.pop();
+    }
+  }
+
+  // ── tick loop
+  function restartTick() {
+    clearInterval(ticking);
+    ticking = setInterval(() => { step(); updateParticles(); draw(); }, speed);
+  }
+
+  function gameOver() {
+    clearInterval(ticking);
+    if (score > hiScore) hiScore = score;
+    overlayTitle.textContent = 'GAME OVER';
+    overlayTitle.style.color = 'var(--red)';
+    overlaySub.innerHTML = 'YOUR SCORE';
+    overlayScore.textContent = score;
+    startBtn.textContent = 'TRY AGAIN';
+    overlay.classList.remove('hidden');
+  }
+
+  // ── controls
+  const DIRS = {
+    ArrowUp:    {x:0,y:-1}, w:{x:0,y:-1}, W:{x:0,y:-1},
+    ArrowDown:  {x:0,y:1},  s:{x:0,y:1},  S:{x:0,y:1},
+    ArrowLeft:  {x:-1,y:0}, a:{x:-1,y:0}, A:{x:-1,y:0},
+    ArrowRight: {x:1,y:0},  d:{x:1,y:0},  D:{x:1,y:0},
+  };
+
+  document.addEventListener('keydown', e => {
+    const d = DIRS[e.key];
+    if (!d) return;
+    if (d.x !== 0 && dir.x !== 0) return; // no 180
+    if (d.y !== 0 && dir.y !== 0) return;
+    nextDir = d;
+    e.preventDefault();
+  });
+
+  document.querySelectorAll('.dpad-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const map = { UP:{x:0,y:-1}, DOWN:{x:0,y:1}, LEFT:{x:-1,y:0}, RIGHT:{x:1,y:0} };
+      const d = map[btn.dataset.dir];
+      if (!d) return;
+      if (d.x !== 0 && dir.x !== 0) return;
+      if (d.y !== 0 && dir.y !== 0) return;
+      nextDir = d;
+    });
+  });
+
+  startBtn.addEventListener('click', () => {
+    overlay.classList.add('hidden');
+    initGame();
+    restartTick();
+  });
+
+  // draw initial static frame
+  draw();
+})();
+</script>
+</body>
+</html>
